@@ -1,10 +1,11 @@
-import React, { useState, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import {
   StyleSheet,
   View,
   TouchableOpacity,
   Dimensions,
   StatusBar,
+  Alert,
 } from 'react-native';
 import MapView, { Polyline, PROVIDER_DEFAULT } from 'react-native-maps';
 import { Crosshair, Layers, Mountain } from 'lucide-react-native';
@@ -15,26 +16,50 @@ import {
   LiveVehicle,
   SimulatedVehicleState,
   StopPoint,
+  TaxiStand,
+  ScheduledTransportRoute,
+  UserRole,
 } from '../types/transport';
 import { cleanUberMapStyle } from '../styles/mapStyles';
 import {
   JALPAN_REGION,
   SIERRA_GORDA_OVERVIEW,
   MOCK_LIVE_TAXIS,
-  generateDynamicRoutes,
+  MOCK_TAXI_STANDS,
 } from '../data/mockTransportData';
 import { useTransportSimulation } from '../hooks/useTransportSimulation';
 import {
   TaxiMarker,
   SimulatedTransportMarker,
   StopMarker,
+  TaxiStandMarker,
 } from './TransportMarker';
 import { HeaderControls } from './HeaderControls';
 import { BottomSheetDetails } from './BottomSheetDetails';
 
 const { width, height } = Dimensions.get('window');
 
-export const TransportMap: React.FC = () => {
+interface TransportMapProps {
+  routes: ScheduledTransportRoute[];
+  taxiStands?: TaxiStand[];
+  liveTaxisList?: LiveVehicle[];
+  onOpenProfile: (driver: LiveVehicle) => void;
+  onOpenAuth: () => void;
+  userRole: UserRole;
+  onMoveTaxiStand?: (standId: string, coordinate: { latitude: number; longitude: number }) => void;
+  focusedVehicle?: LiveVehicle | null;
+}
+
+export const TransportMap: React.FC<TransportMapProps> = ({
+  routes,
+  taxiStands = MOCK_TAXI_STANDS,
+  liveTaxisList = MOCK_LIVE_TAXIS,
+  onOpenProfile,
+  onOpenAuth,
+  userRole,
+  onMoveTaxiStand,
+  focusedVehicle,
+}) => {
   const mapRef = useRef<MapView>(null);
 
   // Filtro activo y estado de búsqueda
@@ -42,9 +67,6 @@ export const TransportMap: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedEntity, setSelectedEntity] = useState<SelectedEntity>(null);
   const [showPolylines, setShowPolylines] = useState<boolean>(true);
-
-  // Carga de rutas dinámicas sincronizadas con la hora actual
-  const routes = useMemo(() => generateDynamicRoutes(), []);
 
   // Hook del motor de simulación temporal e interpolación GIS
   const {
@@ -56,13 +78,28 @@ export const TransportMap: React.FC = () => {
     setSpeedMultiplier,
   } = useTransportSimulation({
     routes,
-    initialTaxis: MOCK_LIVE_TAXIS,
+    initialTaxis: liveTaxisList,
     activeFilter,
     tickIntervalMs: 2000,
     initialSpeedMultiplier: 2,
   });
 
-  // Conteo de transportes activos
+  // Si se solicita enfocar un conductor específico desde el directorio ("Ubicar unidad en el mapa")
+  useEffect(() => {
+    if (focusedVehicle && focusedVehicle.hasLiveLocation !== false) {
+      setSelectedEntity({ type: 'LIVE_VEHICLE', data: focusedVehicle });
+      mapRef.current?.animateToRegion(
+        {
+          latitude: focusedVehicle.coordinate.latitude - 0.0015,
+          longitude: focusedVehicle.coordinate.longitude,
+          latitudeDelta: 0.006,
+          longitudeDelta: 0.006,
+        },
+        550
+      );
+    }
+  }, [focusedVehicle]);
+
   const busCount = useMemo(
     () => simulatedVehicles.filter((v) => v.transportType === 'BUS').length,
     [simulatedVehicles]
@@ -72,17 +109,17 @@ export const TransportMap: React.FC = () => {
     [simulatedVehicles]
   );
 
-  // Manejadores de selección con animación suave de cámara
+  // Manejadores directos de toque sobre CADA pin en el mapa
   const handleSelectTaxi = useCallback((taxi: LiveVehicle) => {
     setSelectedEntity({ type: 'LIVE_VEHICLE', data: taxi });
     mapRef.current?.animateToRegion(
       {
-        latitude: taxi.coordinate.latitude - 0.005, // Offset para dejar espacio al BottomSheet
+        latitude: taxi.coordinate.latitude - 0.002,
         longitude: taxi.coordinate.longitude,
-        latitudeDelta: 0.025,
-        longitudeDelta: 0.025,
+        latitudeDelta: 0.012,
+        longitudeDelta: 0.012,
       },
-      600
+      450
     );
   }, []);
 
@@ -95,7 +132,7 @@ export const TransportMap: React.FC = () => {
         latitudeDelta: 0.065,
         longitudeDelta: 0.065,
       },
-      600
+      450
     );
   }, []);
 
@@ -103,21 +140,34 @@ export const TransportMap: React.FC = () => {
     setSelectedEntity({ type: 'STOP', data: stop, routeName });
     mapRef.current?.animateToRegion(
       {
-        latitude: stop.coordinate.latitude - 0.005,
+        latitude: stop.coordinate.latitude - 0.003,
         longitude: stop.coordinate.longitude,
-        latitudeDelta: 0.03,
-        longitudeDelta: 0.03,
+        latitudeDelta: 0.018,
+        longitudeDelta: 0.018,
       },
-      600
+      450
+    );
+  }, []);
+
+  const handleSelectStand = useCallback((stand: TaxiStand) => {
+    setSelectedEntity({ type: 'TAXI_STAND', data: stand });
+    mapRef.current?.animateToRegion(
+      {
+        latitude: stand.coordinate.latitude - 0.002,
+        longitude: stand.coordinate.longitude,
+        latitudeDelta: 0.010,
+        longitudeDelta: 0.010,
+      },
+      450
     );
   }, []);
 
   const handleRecenterJalpan = useCallback(() => {
-    mapRef.current?.animateToRegion(JALPAN_REGION, 700);
+    mapRef.current?.animateToRegion(JALPAN_REGION, 600);
   }, []);
 
   const handleOverviewSierraGorda = useCallback(() => {
-    mapRef.current?.animateToRegion(SIERRA_GORDA_OVERVIEW, 900);
+    mapRef.current?.animateToRegion(SIERRA_GORDA_OVERVIEW, 700);
   }, []);
 
   const handleFocusSelectedRoute = useCallback(() => {
@@ -130,11 +180,22 @@ export const TransportMap: React.FC = () => {
     }
   }, [selectedEntity]);
 
+  const handleMoveStand = useCallback(
+    (standId: string, coordinate: { latitude: number; longitude: number }) => {
+      onMoveTaxiStand?.(standId, coordinate);
+      Alert.alert(
+        '📍 Ubicación de Base Actualizada',
+        `Nuevas coordenadas guardadas: Lat ${coordinate.latitude.toFixed(5)}, Lon ${coordinate.longitude.toFixed(5)}`
+      );
+    },
+    [onMoveTaxiStand]
+  );
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
 
-      {/* MapView a pantalla completa con estilo Uber limpio */}
+      {/* MapView a pantalla completa */}
       <MapView
         ref={mapRef}
         provider={PROVIDER_DEFAULT}
@@ -145,22 +206,29 @@ export const TransportMap: React.FC = () => {
         showsMyLocationButton={false}
         showsCompass={false}
         showsScale={false}
-        onPress={() => setSelectedEntity(null)}
+        onPress={(e) => {
+          // Ignorar toques sobre marcadores para no deseleccionar la ficha
+          const action = (e.nativeEvent as any)?.action;
+          if (action === 'marker-press' || action === 'polygon-press' || action === 'polyline-press') {
+            return;
+          }
+          setSelectedEntity(null);
+        }}
       >
-        {/* Renderizado de Polylines de Carreteras (Federal 120, Estatal 69) */}
+        {/* Polylines de Carreteras Reales obtenidas con API de Enrutamiento (Mex 120, Mex 69) */}
         {showPolylines &&
           routes.map((route) => (
             <Polyline
               key={route.id}
               coordinates={route.polyline}
               strokeColor={route.routeColor}
-              strokeWidth={4}
+              strokeWidth={4.5}
               lineCap="round"
               lineJoin="round"
             />
           ))}
 
-        {/* Renderizado de Paradas clave */}
+        {/* Paradas oficiales a lo largo de las carreteras */}
         {showPolylines &&
           routes.flatMap((route) =>
             route.stops.map((stop) => (
@@ -173,22 +241,35 @@ export const TransportMap: React.FC = () => {
             ))
           )}
 
-        {/* Marcadores de Taxis en Tiempo Real (Memoizados) */}
-        {liveTaxis.map((taxi) => {
-          const isSelected =
-            selectedEntity?.type === 'LIVE_VEHICLE' &&
-            selectedEntity.data.id === taxi.id;
-          return (
-            <TaxiMarker
-              key={taxi.id}
-              taxi={taxi}
-              isSelected={isSelected}
-              onPress={handleSelectTaxi}
-            />
-          );
-        })}
+        {/* Bases de Taxis oficiales (arrastrables si es Administrador) */}
+        {taxiStands.map((stand) => (
+          <TaxiStandMarker
+            key={stand.id}
+            stand={stand}
+            onPress={handleSelectStand}
+            isAdmin={userRole === 'ADMIN'}
+            onMove={handleMoveStand}
+          />
+        ))}
 
-        {/* Marcadores de Autobuses y Vans Simulados (Memoizados) */}
+        {/* Marcadores de Taxis en Tiempo Real con GPS activo */}
+        {liveTaxis
+          .filter((t) => t.hasLiveLocation !== false)
+          .map((taxi) => {
+            const isSelected =
+              selectedEntity?.type === 'LIVE_VEHICLE' &&
+              selectedEntity.data.id === taxi.id;
+            return (
+              <TaxiMarker
+                key={taxi.id}
+                taxi={taxi}
+                isSelected={isSelected}
+                onPress={handleSelectTaxi}
+              />
+            );
+          })}
+
+        {/* Marcadores de Autobuses y Vans en carretera */}
         {simulatedVehicles.map((vehicle) => {
           const isSelected =
             selectedEntity?.type === 'SIMULATED_VEHICLE' &&
@@ -216,11 +297,13 @@ export const TransportMap: React.FC = () => {
         onChangeSpeedMultiplier={setSpeedMultiplier}
         searchQuery={searchQuery}
         onChangeSearchQuery={setSearchQuery}
+        onOpenAuth={onOpenAuth}
+        userRole={userRole}
       />
 
-      {/* Botones Flotantes de Acción en el Mapa (FAB) */}
+      {/* Botones Flotantes de Navegación Rápida en el Mapa */}
       <View style={styles.fabContainer}>
-        {/* Centrar en Jalpan de Serra */}
+        {/* Centrar en Jalpan Centro */}
         <TouchableOpacity
           style={styles.fabButton}
           activeOpacity={0.85}
@@ -229,7 +312,7 @@ export const TransportMap: React.FC = () => {
           <Crosshair size={20} color="#0f172a" />
         </TouchableOpacity>
 
-        {/* Vista panorámica de toda la Sierra */}
+        {/* Vista panorámica de toda la Sierra y conexiones */}
         <TouchableOpacity
           style={styles.fabButton}
           activeOpacity={0.85}
@@ -238,7 +321,7 @@ export const TransportMap: React.FC = () => {
           <Mountain size={20} color="#0f172a" />
         </TouchableOpacity>
 
-        {/* Alternar visibilidad de las capas de ruta */}
+        {/* Alternar visibilidad de carreteras */}
         <TouchableOpacity
           style={[styles.fabButton, !showPolylines && styles.fabButtonInactive]}
           activeOpacity={0.85}
@@ -248,11 +331,13 @@ export const TransportMap: React.FC = () => {
         </TouchableOpacity>
       </View>
 
-      {/* BottomSheet colapsable de información rápida */}
+      {/* BottomSheet colapsable que se abre al tocar CUALQUIER pin en el mapa */}
       <BottomSheetDetails
         selectedEntity={selectedEntity}
         onClose={() => setSelectedEntity(null)}
         onFocusRoute={handleFocusSelectedRoute}
+        onViewDriverProfile={onOpenProfile}
+        userRole={userRole}
       />
     </View>
   );
@@ -269,15 +354,15 @@ const styles = StyleSheet.create({
   },
   fabContainer: {
     position: 'absolute',
-    right: 16,
+    right: 14,
     top: 240,
     gap: 10,
     zIndex: 15,
   },
   fabButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     backgroundColor: '#ffffff',
     alignItems: 'center',
     justifyContent: 'center',

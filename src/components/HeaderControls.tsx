@@ -7,8 +7,8 @@ import {
   TouchableOpacity,
   ScrollView,
 } from 'react-native';
-import { Search, MapPin, Zap, Clock } from 'lucide-react-native';
-import { TransportFilter } from '../types/transport';
+import { Search, MapPin, Zap, Clock, User } from 'lucide-react-native';
+import { TransportFilter, UserRole } from '../types/transport';
 
 interface HeaderControlsProps {
   activeFilter: TransportFilter;
@@ -21,6 +21,8 @@ interface HeaderControlsProps {
   onChangeSpeedMultiplier: (speed: number) => void;
   searchQuery: string;
   onChangeSearchQuery: (text: string) => void;
+  onOpenAuth?: () => void;
+  userRole?: UserRole;
 }
 
 export const HeaderControls: React.FC<HeaderControlsProps> = ({
@@ -34,13 +36,15 @@ export const HeaderControls: React.FC<HeaderControlsProps> = ({
   onChangeSpeedMultiplier,
   searchQuery,
   onChangeSearchQuery,
+  onOpenAuth,
+  userRole = 'PASSENGER',
 }) => {
   const totalCount = taxiCount + busCount + vanCount;
 
   const filters: { id: TransportFilter; label: string; count: number; color: string }[] = [
     { id: 'ALL', label: 'Todos', count: totalCount, color: '#0f172a' },
     { id: 'TAXI', label: 'Taxis en Vivo', count: taxiCount, color: '#f59e0b' },
-    { id: 'BUS', label: 'Autobuses', count: busCount, color: '#2563eb' },
+    { id: 'BUS', label: 'Autobuses', count: busCount, color: '#059669' },
     { id: 'QRORIDE', label: 'QROride / Vans', count: vanCount, color: '#7c3aed' },
   ];
 
@@ -60,15 +64,21 @@ export const HeaderControls: React.FC<HeaderControlsProps> = ({
 
         <TextInput
           style={styles.searchInput}
-          placeholder="¿A dónde vas en la Sierra Gorda?"
+          placeholder="¿A dónde nos dirigimos hoy?"
           placeholderTextColor="#94a3b8"
           value={searchQuery}
           onChangeText={onChangeSearchQuery}
         />
 
-        <View style={styles.locationPinWrapper}>
-          <MapPin size={18} color="#2563eb" />
-        </View>
+        {onOpenAuth && (
+          <TouchableOpacity
+            style={styles.profileBtn}
+            onPress={onOpenAuth}
+            activeOpacity={0.8}
+          >
+            <User size={16} color="#ffffff" />
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Reloj de simulación y selector de velocidad de tránsito */}
@@ -156,7 +166,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     borderRadius: 16,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.12,
@@ -175,11 +185,14 @@ const styles = StyleSheet.create({
     color: '#0f172a',
     padding: 0,
   },
-  locationPinWrapper: {
+  profileBtn: {
     marginLeft: 8,
-    backgroundColor: '#eff6ff',
-    padding: 6,
-    borderRadius: 8,
+    backgroundColor: '#0f172a',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   statusRow: {
     flexDirection: 'row',

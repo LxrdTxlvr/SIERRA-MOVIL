@@ -1,8 +1,8 @@
 import React, { memo } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, Text } from 'react-native';
 import { Marker } from 'react-native-maps';
-import { Car, Bus, Compass, Navigation } from 'lucide-react-native';
-import { LiveVehicle, SimulatedVehicleState, StopPoint } from '../types/transport';
+import { Car, Bus, Compass, Navigation, MapPin, Move } from 'lucide-react-native';
+import { LiveVehicle, SimulatedVehicleState, StopPoint, TaxiStand } from '../types/transport';
 
 interface TaxiMarkerProps {
   taxi: LiveVehicle;
@@ -18,10 +18,17 @@ export const TaxiMarker = memo(({ taxi, isSelected, onPress }: TaxiMarkerProps) 
       coordinate={taxi.coordinate}
       anchor={{ x: 0.5, y: 0.5 }}
       flat={false}
-      onPress={() => onPress(taxi)}
-      tracksViewChanges={false}
+      stopPropagation={true}
+      onPress={(e) => {
+        e?.stopPropagation?.();
+        onPress(taxi);
+      }}
+      tracksViewChanges={true}
     >
-      <View style={[styles.markerContainer, isSelected && styles.markerSelected]}>
+      <View
+        pointerEvents="none"
+        style={[styles.markerContainer, isSelected && styles.markerSelected]}
+      >
         <View
           style={[
             styles.taxiIconBubble,
@@ -64,17 +71,25 @@ interface SimulatedTransportMarkerProps {
 export const SimulatedTransportMarker = memo(
   ({ vehicle, isSelected, onPress }: SimulatedTransportMarkerProps) => {
     const isBus = vehicle.transportType === 'BUS';
-    const primaryColor = isBus ? '#2563eb' : '#7c3aed';
+    const isVencedor = vehicle.operator.includes('Vencedor');
+    const primaryColor = isVencedor ? '#059669' : isBus ? '#2563eb' : '#7c3aed';
 
     return (
       <Marker
         coordinate={vehicle.currentCoordinate}
         anchor={{ x: 0.5, y: 0.5 }}
         flat={false}
-        onPress={() => onPress(vehicle)}
-        tracksViewChanges={false}
+        stopPropagation={true}
+        onPress={(e) => {
+          e?.stopPropagation?.();
+          onPress(vehicle);
+        }}
+        tracksViewChanges={true}
       >
-        <View style={[styles.markerContainer, isSelected && styles.markerSelected]}>
+        <View
+          pointerEvents="none"
+          style={[styles.markerContainer, isSelected && styles.markerSelected]}
+        >
           <View style={[styles.busIconBubble, { backgroundColor: primaryColor }]}>
             {/* Indicador de rumbo a lo largo de la carretera */}
             <View
@@ -91,7 +106,7 @@ export const SimulatedTransportMarker = memo(
           {/* Etiqueta compacta flotante */}
           <View style={[styles.busLabelBubble, { borderColor: primaryColor }]}>
             <Text style={[styles.busLabelText, { color: primaryColor }]} numberOfLines={1}>
-              {isBus ? 'Flecha Amarilla' : 'QROride'}
+              {isVencedor ? 'Vencedor' : isBus ? 'Flecha' : 'QROvan'}
             </Text>
             {vehicle.status === 'IN_TRANSIT' && (
               <Text style={styles.busProgressText}>
@@ -112,15 +127,73 @@ interface StopMarkerProps {
 }
 
 export const StopMarker = memo(({ stop, routeName, onPress }: StopMarkerProps) => {
+  const isVencedorStop = stop.id.includes('venc') || stop.operator?.includes('Vencedor');
+
   return (
     <Marker
       coordinate={stop.coordinate}
       anchor={{ x: 0.5, y: 0.5 }}
-      onPress={() => onPress(stop, routeName)}
-      tracksViewChanges={false}
+      stopPropagation={true}
+      onPress={(e) => {
+        e?.stopPropagation?.();
+        onPress(stop, routeName);
+      }}
+      tracksViewChanges={true}
     >
-      <View style={styles.stopMarkerContainer}>
-        <View style={[styles.stopDot, stop.isTerminal && styles.terminalDot]} />
+      <View pointerEvents="none" style={styles.stopMarkerContainer}>
+        {isVencedorStop ? (
+          <View style={styles.vencedorStopBubble}>
+            <Bus size={13} color="#ffffff" />
+            <Text style={styles.vencedorStopText}>Vencedor Centro</Text>
+          </View>
+        ) : (
+          <View style={[styles.stopDot, stop.isTerminal && styles.terminalDot]} />
+        )}
+      </View>
+    </Marker>
+  );
+});
+
+interface TaxiStandMarkerProps {
+  stand: TaxiStand;
+  onPress: (stand: TaxiStand) => void;
+  isAdmin?: boolean;
+  onMove?: (standId: string, coordinate: { latitude: number; longitude: number }) => void;
+}
+
+export const TaxiStandMarker = memo(({ stand, onPress, isAdmin, onMove }: TaxiStandMarkerProps) => {
+  const displayName = stand.name
+    .replace('Sitio Taxis ', 'Base ')
+    .replace('Sitio ', 'Base ');
+
+  return (
+    <Marker
+      coordinate={stand.coordinate}
+      anchor={{ x: 0.5, y: 1 }}
+      stopPropagation={true}
+      onPress={(e) => {
+        e?.stopPropagation?.();
+        onPress(stand);
+      }}
+      draggable={isAdmin}
+      onDragEnd={(e) => {
+        if (isAdmin && onMove) {
+          onMove(stand.id, e.nativeEvent.coordinate);
+        }
+      }}
+      tracksViewChanges={true}
+    >
+      <View pointerEvents="none" style={styles.standMarkerContainer}>
+        <View style={[styles.standPin, isAdmin && styles.standPinAdmin]}>
+          <MapPin size={12} color="#ffffff" />
+          <Text style={styles.standPinText}>{displayName}</Text>
+          {isAdmin && (
+            <View style={styles.adminMoveBadge}>
+              <Move size={10} color="#ffffff" />
+            </View>
+          )}
+        </View>
+        <View style={[styles.standTriangle, isAdmin && styles.standTriangleAdmin]} />
       </View>
     </Marker>
   );
@@ -133,7 +206,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   markerSelected: {
-    transform: [{ scale: 1.15 }],
+    transform: [{ scale: 1.18 }],
   },
   taxiIconBubble: {
     width: 36,
@@ -150,17 +223,17 @@ const styles = StyleSheet.create({
     borderColor: '#ffffff',
   },
   busIconBubble: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.32,
-    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
     elevation: 7,
-    borderWidth: 2.5,
+    borderWidth: 2,
     borderColor: '#ffffff',
   },
   bearingPointer: {
@@ -176,7 +249,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 10,
-    marginTop: 3,
+    marginTop: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.15,
@@ -203,7 +276,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 8,
-    marginTop: 3,
+    marginTop: 2,
     borderWidth: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -222,7 +295,7 @@ const styles = StyleSheet.create({
     marginLeft: 3,
   },
   stopMarkerContainer: {
-    padding: 6,
+    padding: 4,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -240,5 +313,73 @@ const styles = StyleSheet.create({
     borderRadius: 7,
     borderWidth: 3.5,
     borderColor: '#2563eb',
+  },
+  vencedorStopBubble: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#059669',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 12,
+    gap: 4,
+    borderWidth: 2,
+    borderColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  vencedorStopText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#ffffff',
+  },
+  standMarkerContainer: {
+    alignItems: 'center',
+  },
+  standPin: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#0369a1',
+    paddingHorizontal: 8,
+    paddingVertical: 3.5,
+    borderRadius: 10,
+    gap: 4,
+    borderWidth: 1.5,
+    borderColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  standPinAdmin: {
+    backgroundColor: '#9333ea',
+    borderColor: '#fef08a',
+  },
+  adminMoveBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    borderRadius: 4,
+    padding: 2,
+    marginLeft: 2,
+  },
+  standPinText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#ffffff',
+  },
+  standTriangle: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 5,
+    borderRightWidth: 5,
+    borderTopWidth: 5,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: '#0369a1',
+  },
+  standTriangleAdmin: {
+    borderTopColor: '#9333ea',
   },
 });
